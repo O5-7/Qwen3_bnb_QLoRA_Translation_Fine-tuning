@@ -48,6 +48,8 @@ with open("../Data_set/Translation-Data-240804.csv", encoding="utf-8") as f:
                 split_index = line.rfind(",")
                 zh = line[split_index + 1 :]
                 en = line[8:split_index]
+                if " " in en:
+                    continue
                 en = remove_quotation(en)
                 zh = remove_quotation(zh)
-                w.write(f"{en}<|split|>{zh}" + "\n")
+                w.write(f"<|start|><||>{en}<|end|>\\n<|translation|>{zh}" + "\n")
