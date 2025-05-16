@@ -91,7 +91,7 @@ if __name__ == "__main__":
     lora_model = get_peft_model(model, L_config).to(device)
     lora_model.print_trainable_parameters()
 
-    step_num = 20000
+    step_num = 50000
     optimizer = PagedAdamW8bit(lora_model.parameters(), lr=1e-5)
     scheduler = get_scheduler(
         name="cosine",
@@ -124,21 +124,28 @@ if __name__ == "__main__":
         inputs.to(device)
         labels.to(device)
         optimizer.zero_grad()
-        outputs = lora_model(
-            input_ids=inputs.input_ids,
-            attention_mask=inputs.attention_mask,
-            labels=labels,
-        )
-        loss = outputs.loss
-        loss.backward()
-        optimizer.step()
-        scheduler.step()
-        torch.cuda.empty_cache()
-        print(f"step={step:<6} loss={loss.item():.4f}")
-        if step % 1000 == 0 and step != 0:
-            print(f"step:{step} lora adapter saved")
-            lora_model.save_pretrained(f"model_saves/{'0' * (6 - len(str(step)))}{step}_lora_adapter")
+        try:
+            outputs = lora_model(
+                input_ids=inputs.input_ids,
+                attention_mask=inputs.attention_mask,
+                labels=labels,
+            )
+            loss = outputs.loss
+            loss.backward()
+            optimizer.step()
+            scheduler.step()
+            torch.cuda.empty_cache()
+            print(f"step={step:<6} loss={loss.item():.4f}")
+            if step % 1000 == 0 and step != 0:
+                print(f"step:{step} lora adapter saved=====================================")
+                lora_model.save_pretrained(f"model_saves/{'0' * (6 - len(str(step)))}{step}_lora_adapter")
+                tokenizer.save_pretrained(f"model_saves/{'0' * (6 - len(str(step)))}{step}_lora_adapter")
+        except torch.OutOfMemoryError as e:
+            print("OutOfMemoryError")
+            step -= 1
+            continue
 
     merged_model = lora_model.merge_and_unload()
-    merged_model.save_pretrained(f"model_saves/")
+    merged_model.save_pretrained("./Qwen3-0.6B-bnb4-LIL-LoRA-16-50000")
+    tokenizer.save_pretrained("./Qwen3-0.6B-bnb4-LIL-LoRA-16-50000")
     print("model saved")
