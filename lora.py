@@ -20,13 +20,15 @@ from transformers import BitsAndBytesConfig
 
 
 class Q3_data(Dataset):
-    def __init__(self, file_name: str, tokenizer: Qwen2TokenizerFast):
+    def __init__(self, file_name: str, tokenizer: Qwen2TokenizerFast, test_limit = False):
         super().__init__()
         self.tokenizer = tokenizer
         self.prompt_list = []
         with open(join("./translation_dataset", file_name), "r", encoding="utf-8") as f:
-            for prompt in tqdm(f.readlines()[:1000], ncols=120):
+            for prompt in tqdm(f.readlines()[:1000] if test_limit else f.readlines(), ncols=120):
+                prompt = prompt.replace("\\n","\n")
                 prompt = prompt[:-1]
+                prompt += tokenizer.eos_token
                 prompt_len = tokenizer(prompt, return_tensors="pt").input_ids.shape[0]
                 if prompt_len <= 512:
                     self.prompt_list.append(prompt)
@@ -58,9 +60,6 @@ class Q3_data(Dataset):
 #     return_dict=True,
 # )
 
-def add_new_token(in_model, in_tokenizer, tokens):
-    in_tokenizer.add_tokens(new_tokens)
-
 if __name__ == "__main__":
     Q_config = BitsAndBytesConfig(
         load_in_4bit=True,
@@ -79,19 +78,7 @@ if __name__ == "__main__":
         quantization_config=Q_config
     )
 
-    new_tokens = ['<|', '|>', '<|start|>', '<|end|>', '<|translation|>', '{i}', '{/i}', '{b}', '{/b}', '{s}', '{/s}']
-    num_added = tokenizer.add_tokens(new_tokens)
-
-
-
-
-
     model = prepare_model_for_kbit_training(model)
-    model.resize_token_embeddings(len(tokenizer))
-    with torch.no_grad():
-        embeddings = model.get_input_embeddings().weight.data
-        new_emb_mean = embeddings[:-num_added].mean(dim=0)
-        embeddings[-num_added:] = new_emb_mean
 
     L_config = LoraConfig(
         r=16,
@@ -149,7 +136,9 @@ if __name__ == "__main__":
         torch.cuda.empty_cache()
         print(f"step={step:<6} loss={loss.item():.4f}")
         if step % 1000 == 0 and step != 0:
+            print(f"step:{step} lora adapter saved")
             lora_model.save_pretrained(f"model_saves/{'0' * (6 - len(str(step)))}{step}_lora_adapter")
 
     merged_model = lora_model.merge_and_unload()
     merged_model.save_pretrained(f"model_saves/")
+    print("model saved")
