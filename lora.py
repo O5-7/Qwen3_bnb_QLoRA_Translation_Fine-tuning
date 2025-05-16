@@ -58,6 +58,8 @@ class Q3_data(Dataset):
 #     return_dict=True,
 # )
 
+def add_new_token(in_model, in_tokenizer, tokens):
+    in_tokenizer.add_tokens(new_tokens)
 
 if __name__ == "__main__":
     Q_config = BitsAndBytesConfig(
@@ -67,7 +69,7 @@ if __name__ == "__main__":
         bnb_4bit_compute_dtype=torch.bfloat16,
     )
 
-    model_name = "../dl_models/Qwen3-0.6B"
+    model_name = "../dl_models/Qwen3-0.6B-LIL-tokens"
     device = "cuda" if torch.cuda.is_available() else "cpu"
 
     # load the tokenizer and the model
@@ -76,7 +78,20 @@ if __name__ == "__main__":
         model_name,
         quantization_config=Q_config
     )
+
+    new_tokens = ['<|', '|>', '<|start|>', '<|end|>', '<|translation|>', '{i}', '{/i}', '{b}', '{/b}', '{s}', '{/s}']
+    num_added = tokenizer.add_tokens(new_tokens)
+
+
+
+
+
     model = prepare_model_for_kbit_training(model)
+    model.resize_token_embeddings(len(tokenizer))
+    with torch.no_grad():
+        embeddings = model.get_input_embeddings().weight.data
+        new_emb_mean = embeddings[:-num_added].mean(dim=0)
+        embeddings[-num_added:] = new_emb_mean
 
     L_config = LoraConfig(
         r=16,
@@ -101,7 +116,6 @@ if __name__ == "__main__":
     lil_data = Q3_data("lil.txt", tokenizer)
     mc_data = Q3_data("mc.txt", tokenizer)
     tr_data = Q3_data("tr.txt", tokenizer)
-
 
     # scaler = GradScaler()
 
@@ -134,4 +148,8 @@ if __name__ == "__main__":
         scheduler.step()
         torch.cuda.empty_cache()
         print(f"step={step:<6} loss={loss.item():.4f}")
+        if step % 1000 == 0 and step != 0:
+            lora_model.save_pretrained(f"model_saves/{'0' * (6 - len(str(step)))}{step}_lora_adapter")
 
+    merged_model = lora_model.merge_and_unload()
+    merged_model.save_pretrained(f"model_saves/")
