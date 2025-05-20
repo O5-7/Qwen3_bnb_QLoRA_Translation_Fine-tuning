@@ -46,7 +46,14 @@ class Q3_data(Dataset):
     def get_sample(self, num):
         indices = random.sample(range(self.len), num)
         in_batch = [self.prompt_list[i] + self.tokenizer.eos_token for i in indices]
-        return in_batch
+        mask_len_list = []
+        for prompt in in_batch:
+            tr_start = prompt.find("<|translation|>")
+            mask_len = self.tokenizer(
+                prompt[: tr_start + 15], return_tensors="pt"
+            ).input_ids.shape[1]
+            mask_len_list.append(mask_len)
+        return mask_len_list, in_batch
 
     def __len__(self):
         return self.len
@@ -70,22 +77,22 @@ if __name__ == "__main__":
         bnb_4bit_compute_dtype=torch.bfloat16,
     )
 
-    model_name = "../dl_models/Qwen3-0.6B-LIL-tokens"
+    model_name = "../dl_models/Qwen3-0.6B"
     device = "cuda" if torch.cuda.is_available() else "cpu"
 
     # load the tokenizer and the model
     tokenizer: Qwen2TokenizerFast = AutoTokenizer.from_pretrained(model_name)
     model: Qwen3ForCausalLM = AutoModelForCausalLM.from_pretrained(
-        model_name, quantization_config=Q_config
+        model_name,
+        quantization_config=Q_config,
     )
 
     model = prepare_model_for_kbit_training(model)
 
     L_config = LoraConfig(
         r=16,
-        lora_alpha=16,
-        target_modules=["q_proj", "v_proj"],
-        # init_lora_weights="pissa",
+        lora_alpha=32,
+        target_modules=["q_proj", "v_proj", "o_proj"],
         lora_dropout=0.1,
         bias="none",
     )
@@ -93,8 +100,8 @@ if __name__ == "__main__":
     lora_model.train()
     lora_model.print_trainable_parameters()
 
-    step_num = 20000
-    optimizer = PagedAdamW8bit(lora_model.parameters(), lr=1e-4)
+    step_num = 40000
+    optimizer = PagedAdamW8bit(lora_model.parameters(), lr=1e-5)
     scheduler = get_scheduler(
         name="cosine",
         optimizer=optimizer,
@@ -102,7 +109,7 @@ if __name__ == "__main__":
         num_training_steps=step_num,
     )
 
-    lil_data = Q3_data("lil.txt", tokenizer, token_limit=512, test_limit=True)
+    lil_data = Q3_data("lil.txt", tokenizer, token_limit=512, test_limit=False)
     mc_data = Q3_data("mc.txt", tokenizer, token_limit=256)
     tr_data = Q3_data("tr.txt", tokenizer, token_limit=256)
 
@@ -110,24 +117,25 @@ if __name__ == "__main__":
 
     loss_list = []
     for step in range(step_num):
+        mask = []
         batch = []
-
-        rn = random.random()
-        if rn > 0.95:
-            batch = lil_data.get_sample(6)
-        else:
-            if random.random() > 0.5:
-                batch = (mc_data.get_sample(3),)
-            else:
-                batch = tr_data.get_sample(3)
+        data_list = [
+            lil_data.get_sample(5),
+        ]
+        for _m, _b in data_list:
+            mask += _m
+            batch += _b
 
         inputs = tokenizer(batch, return_tensors="pt", padding=True)
         labels = inputs.input_ids.clone()
-        for label in labels:
-            index = list(label.detach().cpu().numpy()).index(151673)
-            label[: index + 1] = -100
+        for i, m in enumerate(mask):
+            labels[i][:m] = -100
         inputs.to(device)
         labels.to(device)
+
+        # print(inputs.input_ids[0])
+        # print(labels[0])
+        # exit()
 
         optimizer.zero_grad()
         try:
@@ -147,15 +155,13 @@ if __name__ == "__main__":
                 lora_model.eval()
                 with torch.no_grad():
                     test_input = """MayaEvents\n<||>.........<||>......<||>...<||>I tap on Maya’s name in my phone and think about how many other versions of me have been able to narrate that.\n<|start|><||>Sure, it may have taken the end of several worlds (Or several ends of one world) for me to {i}be able{/i} to share something like this with you, but...I’m here.<|end|>\n<||>And hopefully soon, she will be as well.<||>As I stare down at a name that is perhaps the most important to me (Barring the recent intrusion of another girl I’ve known for far too long), I think about what I’m going to say when she picks up.<||>But then she picks up.<||>And I still have absolutely nothing.\n<|translation|>"""
-                    test_aim = (
-                        "当然，我可能经历了多个世界的末日(或者一个世界的多个末日){i}才能{/i}和你分享这样的事情，但是...我在这里。"
-                    )
+                    test_aim = "当然，我可能经历了多个世界的末日(或者一个世界的多个末日){i}才能{/i}和你分享这样的事情，但是...我在这里。"
                     test_ids_atte = tokenizer(test_input, return_tensors="pt").to(
                         device
                     )
                     output_ids = model.generate(**test_ids_atte)
                     translation_ids = output_ids[0].tolist()
-                    translation_ids = translation_ids[translation_ids.index(151673) :]
+                    translation_ids = translation_ids[test_ids_atte.input_ids.shape[1] + 1:]
                     translation_res = tokenizer.decode(translation_ids)
                     print(test_aim)
                     print(translation_res)
@@ -175,6 +181,6 @@ if __name__ == "__main__":
             f.write(f"{loss}\n")
 
     merged_model = lora_model.merge_and_unload()
-    merged_model.save_pretrained("./Qwen3-0.6B-bnb4-LIL-LoRA-16-50000")
-    tokenizer.save_pretrained("./Qwen3-0.6B-bnb4-LIL-LoRA-16-50000")
+    merged_model.save_pretrained("./Qwen3-0.6B-bnb4-LIL-LoRA-16-20000")
+    tokenizer.save_pretrained("./Qwen3-0.6B-bnb4-LIL-LoRA-16-20000")
     print("model saved")
