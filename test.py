@@ -30,27 +30,37 @@ device = "cuda" if torch.cuda.is_available() else "cpu"
 
 # load the tokenizer and the model
 tokenizer: Qwen2TokenizerFast = AutoTokenizer.from_pretrained(model_name)
+
 model: Qwen3ForCausalLM = AutoModelForCausalLM.from_pretrained(
     model_name,
     quantization_config=Q_config
 ).to(device)
 
-prompt = "请介绍一下自己。"
+prompt = "你好\n请介绍一下自己。"
 messages = [
-    {"role": "user", "content": prompt}
+    {"role": "user", "content": prompt},
 ]
 text = tokenizer.apply_chat_template(
     messages,
     tokenize=False,
     add_generation_prompt=True,
-    enable_thinking=False # Switches between thinking and non-thinking modes. Default is True.
+    enable_thinking=False  # Switches between thinking and non-thinking modes. Default is True.
 )
+print(text)
+print("============================================================================")
+text = """<|im_start|>user\n文件：MayaEvents\n上下文：<||>.........<||>......<||>...<||>I tap on Maya’s name in my phone and think about how many other versions of me have been able to narrate that.<||>Sure, it may have taken the end of several worlds (Or several ends of one world) for me to {i}be able{/i} to share something like this with you, but...I’m here.<||>And hopefully soon, she will be as well.<||>As I stare down at a name that is perhaps the most important to me (Barring the recent intrusion of another girl I’ve known for far too long), I think about what I’m going to say when she picks up.<||>But then she picks up.<||>And I still have absolutely nothing.\n目标原文：<||>Sure, it may have taken the end of several worlds (Or several ends of one world) for me to {i}be able{/i} to share something like this with you, but...I’m here.<|im_end|>\n<|im_start|>assistant\n<think>\n\n</think>\n\n翻译："""
+print(text)
+print("============================================================================")
+
 model_inputs = tokenizer([text], return_tensors="pt").to(model.device)
 
 generated_ids = model.generate(
     **model_inputs,
     max_new_tokens=32768
 )
+print(tokenizer.decode(generated_ids[0], skip_special_tokens=False))
+exit()
+
 output_ids = generated_ids[0][len(model_inputs.input_ids[0]):].tolist()
 
 try:

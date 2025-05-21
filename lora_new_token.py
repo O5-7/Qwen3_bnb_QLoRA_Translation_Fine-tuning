@@ -19,15 +19,6 @@ from torch.optim import AdamW
 from bitsandbytes.optim import PagedAdamW8bit
 from transformers import BitsAndBytesConfig
 
-"""<|im_start|>user
-请介绍一下自己。<|im_end|>
-<|im_start|>assistant
-<think>
-
-</think>
-
-我是一个智能助手，可以为您提供帮助和支持。如果您有任何问题或需要帮助，请随时告诉我！<|im_end|>"""
-
 
 class Q3_data(Dataset):
     def __init__(
@@ -46,6 +37,7 @@ class Q3_data(Dataset):
             ):
                 prompt = prompt.replace("\\n", "\n")
                 prompt = prompt[:-1]
+                prompt += tokenizer.eos_token
                 prompt_len = tokenizer(prompt, return_tensors="pt").input_ids.shape[0]
                 if prompt_len <= token_limit:
                     self.prompt_list.append(prompt)
@@ -54,14 +46,7 @@ class Q3_data(Dataset):
     def get_sample(self, num):
         indices = random.sample(range(self.len), num)
         in_batch = [self.prompt_list[i] + self.tokenizer.eos_token for i in indices]
-        mask_len_list = []
-        for prompt in in_batch:
-            tr_start = prompt.find("翻译：")
-            mask_len = self.tokenizer(
-                prompt[: tr_start + 3], return_tensors="pt"
-            ).input_ids.shape[1]
-            mask_len_list.append(mask_len)
-        return mask_len_list, in_batch
+        return in_batch
 
     def __len__(self):
         return self.len
@@ -85,7 +70,7 @@ if __name__ == "__main__":
         bnb_4bit_compute_dtype=torch.bfloat16,
     )
 
-    model_name = "../dl_models/Qwen3-0.6B"
+    model_name = "../dl_models/Qwen3-0.6B-LIL-tokens"
     device = "cuda" if torch.cuda.is_available() else "cpu"
 
     # load the tokenizer and the model
@@ -99,8 +84,8 @@ if __name__ == "__main__":
 
     L_config = LoraConfig(
         r=16,
-        lora_alpha=16,
-        target_modules=["q_proj", "v_proj", "k_proj"],
+        lora_alpha=32,
+        target_modules=["q_proj", "v_proj", "o_proj"],
         lora_dropout=0.1,
         bias="none",
     )
@@ -108,46 +93,36 @@ if __name__ == "__main__":
     lora_model.train()
     lora_model.print_trainable_parameters()
 
-    step_num = 30000
-    optimizer = PagedAdamW8bit(lora_model.parameters(), lr=1e-4)
+    step_num = 50000
+    optimizer = PagedAdamW8bit(lora_model.parameters(), lr=1e-5)
     scheduler = get_scheduler(
         name="cosine",
         optimizer=optimizer,
-        num_warmup_steps=1000,
+        num_warmup_steps=2000,
         num_training_steps=step_num,
     )
 
-    lil_data = Q3_data("lil.txt", tokenizer, token_limit=618, test_limit=False)
+    lil_data = Q3_data("lil.txt", tokenizer, token_limit=512, test_limit=True)
     mc_data = Q3_data("mc.txt", tokenizer, token_limit=256)
     tr_data = Q3_data("tr.txt", tokenizer, token_limit=256)
 
     # scaler = GradScaler()
 
     loss_list = []
-
-    with open("./loss_log.txt", "w", encoding="utf-8") as f:
-        f.write("")
-
-    for step in range(step_num):
+    for step in tqdm(range(step_num)):
         mask = []
-        batch = []
-        data_list = [
-            lil_data.get_sample(4),
-        ]
-        for _m, _b in data_list:
-            mask += _m
-            batch += _b
+        batch = lil_data.get_sample(2)
 
         inputs = tokenizer(batch, return_tensors="pt", padding=True)
         labels = inputs.input_ids.clone()
-        for i, m in enumerate(mask):
-            labels[i][:m] = -100
-            labels[i][labels[i] == 151643] = -100
+        for label in labels:
+            label:torch.Tensor
+            label[label.tolist().index(151673)+1:] = -100
+            # label[1:] = label.clone()[:-1]
         inputs.to(device)
         labels.to(device)
 
         # print(inputs.input_ids[0])
-        # print(inputs.attention_mask[0])
         # print(labels[0])
         # exit()
 
@@ -164,22 +139,22 @@ if __name__ == "__main__":
             loss.backward()
             optimizer.step()
             scheduler.step()
-            torch.cuda.empty_cache()
-            # print(f"step={step:<6} loss={loss.item():.4f}")
+            # torch.cuda.empty_cache()
+            print(f"step={step:<6} loss={loss.item():.4f}")
             if step % 50 == 0 and step != 0:
                 lora_model.eval()
                 with torch.no_grad():
-                    test_input = """<|im_start|>user\n文件：MayaEvents\n上下文：<||>.........<||>......<||>...<||>I tap on Maya’s name in my phone and think about how many other versions of me have been able to narrate that.<||>Sure, it may have taken the end of several worlds (Or several ends of one world) for me to {i}be able{/i} to share something like this with you, but...I’m here.<||>And hopefully soon, she will be as well.<||>As I stare down at a name that is perhaps the most important to me (Barring the recent intrusion of another girl I’ve known for far too long), I think about what I’m going to say when she picks up.<||>But then she picks up.<||>And I still have absolutely nothing.\n目标原文：<||>Sure, it may have taken the end of several worlds (Or several ends of one world) for me to {i}be able{/i} to share something like this with you, but...I’m here.<|im_end|>\n<|im_start|>assistant\n<think>\n\n</think>\n\n翻译："""
+                    test_input = """MayaEvents\n<||>.........<||>......<||>...<||>I tap on Maya’s name in my phone and think about how many other versions of me have been able to narrate that.\n<|start|><||>Sure, it may have taken the end of several worlds (Or several ends of one world) for me to {i}be able{/i} to share something like this with you, but...I’m here.<|end|>\n<||>And hopefully soon, she will be as well.<||>As I stare down at a name that is perhaps the most important to me (Barring the recent intrusion of another girl I’ve known for far too long), I think about what I’m going to say when she picks up.<||>But then she picks up.<||>And I still have absolutely nothing.\n<|translation|>"""
                     test_aim = "当然，我可能经历了多个世界的末日(或者一个世界的多个末日){i}才能{/i}和你分享这样的事情，但是...我在这里。"
                     test_ids_atte = tokenizer(test_input, return_tensors="pt").to(device)
-                    output_ids = model.generate(**test_ids_atte, max_new_tokens=32768)
+                    output_ids = model.generate(**test_ids_atte)
                     translation_ids = output_ids[0].tolist()
-                    translation_ids = translation_ids[test_ids_atte.input_ids.shape[1]:]
-                    translation_res = tokenizer.decode(translation_ids,skip_special_tokens=True)
+                    translation_ids = translation_ids[translation_ids.index(151673) + 1:]
+                    translation_res = tokenizer.decode(translation_ids)
                     print(test_aim)
                     print(translation_res)
-                    print(f"tokenLne = {len(translation_ids)}")
                 lora_model.train()
+                torch.cuda.empty_cache()
 
             if step % 1000 == 0 and step != 0:
                 print(f"step:{step} lora adapter saved=====================================")

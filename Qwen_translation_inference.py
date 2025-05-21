@@ -134,7 +134,10 @@ def translate(folder_path: str, max_new_tokens_limit_ratio: float = 1.7):
                     pre_text += f"{p[0]}{p[1]}"
                 for n in next:
                     next_text += f"{n[0]}{n[1]}"
-                prompt = f"{in_file_name}\n{pre_text}\n<|start|>{dialogue_list[i][0]}{dialogue_list[i][1]}<|end|>\n{next_text}\n<|translation|>"
+
+                target_text = f"{dialogue_list[i][0]}{dialogue_list[i][1]}"
+                # prompt = f"{in_file_name}\n{pre_text}\n<|start|>{dialogue_list[i][0]}{dialogue_list[i][1]}<|end|>\n{next_text}\n<|translation|>"
+                prompt = f"文件：{in_file_name}\\n上下文：{pre_text}{target_text}{next_text}\\n目标原文：{target_text}\\n翻译："
                 translation_seqs.append((in_file_name, 0, *dialogue_list[i][3], prompt))
 
         string_list = []
@@ -153,7 +156,11 @@ def translate(folder_path: str, max_new_tokens_limit_ratio: float = 1.7):
                     pre_text += f"{p[0]}{p[1]}"
                 for n in next:
                     next_text += f"{n[0]}{n[1]}"
-                prompt = f"{in_file_name}\n{pre_text}\n<|start|>{string_list[i][0]}{string_list[i][1]}<|end|>\n{next_text}\n<|translation|>"
+
+                target_text = f"{string_list[i][0]}{string_list[i][1]}"
+                # prompt = f"{in_file_name}\n{pre_text}\n<|start|>{string_list[i][0]}{string_list[i][1]}<|end|>\n{next_text}\n<|translation|>"
+                prompt = f"文件：{in_file_name}\\n上下文：{pre_text}{target_text}{next_text}\\n目标原文：{target_text}\\n翻译："
+
                 translation_seqs.append((in_file_name, 1, string_list[i][1], prompt))
 
     out_file_json = {}
