@@ -26,7 +26,7 @@ from transformers import BitsAndBytesConfig
 
 </think>
 
-我是一个智能助手，可以为您提供帮助和支持。如果您有任何问题或需要帮助，请随时告诉我！<|im_end|>"""
+翻译：我是一个智能助手，可以为您提供帮助和支持。如果您有任何问题或需要帮助，请随时告诉我！<|im_end|>"""
 
 
 class Q3_data(Dataset):
@@ -53,7 +53,7 @@ class Q3_data(Dataset):
 
     def get_sample(self, num):
         indices = random.sample(range(self.len), num)
-        in_batch = [self.prompt_list[i] + self.tokenizer.eos_token for i in indices]
+        in_batch = [self.prompt_list[i] for i in indices]
         mask_len_list = []
         for prompt in in_batch:
             tr_start = prompt.find("翻译：")
@@ -97,8 +97,9 @@ if __name__ == "__main__":
 
     model = prepare_model_for_kbit_training(model)
 
+    lora_rank = 16
     L_config = LoraConfig(
-        r=16,
+        r=lora_rank,
         lora_alpha=16,
         target_modules=["q_proj", "v_proj", "k_proj"],
         lora_dropout=0.1,
@@ -108,7 +109,7 @@ if __name__ == "__main__":
     lora_model.train()
     lora_model.print_trainable_parameters()
 
-    step_num = 30000
+    step_num = 10000
     optimizer = PagedAdamW8bit(lora_model.parameters(), lr=1e-4)
     scheduler = get_scheduler(
         name="cosine",
@@ -128,7 +129,7 @@ if __name__ == "__main__":
     with open("./loss_log.txt", "w", encoding="utf-8") as f:
         f.write("")
 
-    for step in range(step_num):
+    for step in tqdm(range(step_num), ncols=120):
         mask = []
         batch = []
         data_list = [
@@ -160,7 +161,7 @@ if __name__ == "__main__":
             )
             loss = outputs.loss
             with open("./loss_log.txt", "a", encoding="utf-8") as f:
-                    f.write(f"{loss.detach().cpu().item()}\n")
+                f.write(f"{loss.detach().cpu().item()}\n")
             loss.backward()
             optimizer.step()
             scheduler.step()
@@ -171,26 +172,38 @@ if __name__ == "__main__":
                 with torch.no_grad():
                     test_input = """<|im_start|>user\n文件：MayaEvents\n上下文：<||>.........<||>......<||>...<||>I tap on Maya’s name in my phone and think about how many other versions of me have been able to narrate that.<||>Sure, it may have taken the end of several worlds (Or several ends of one world) for me to {i}be able{/i} to share something like this with you, but...I’m here.<||>And hopefully soon, she will be as well.<||>As I stare down at a name that is perhaps the most important to me (Barring the recent intrusion of another girl I’ve known for far too long), I think about what I’m going to say when she picks up.<||>But then she picks up.<||>And I still have absolutely nothing.\n目标原文：<||>Sure, it may have taken the end of several worlds (Or several ends of one world) for me to {i}be able{/i} to share something like this with you, but...I’m here.<|im_end|>\n<|im_start|>assistant\n<think>\n\n</think>\n\n翻译："""
                     test_aim = "当然，我可能经历了多个世界的末日(或者一个世界的多个末日){i}才能{/i}和你分享这样的事情，但是...我在这里。"
-                    test_ids_atte = tokenizer(test_input, return_tensors="pt").to(device)
-                    output_ids = model.generate(**test_ids_atte, max_new_tokens=32768)
+                    test_ids_atte = tokenizer(test_input, return_tensors="pt").to(
+                        device
+                    )
+                    output_ids = model.generate(**test_ids_atte, max_new_tokens=100)
                     translation_ids = output_ids[0].tolist()
-                    translation_ids = translation_ids[test_ids_atte.input_ids.shape[1]:]
-                    translation_res = tokenizer.decode(translation_ids,skip_special_tokens=True)
-                    print(test_aim)
+                    translation_ids = translation_ids[
+                        test_ids_atte.input_ids.shape[1] :
+                    ]
+                    translation_res = tokenizer.decode(
+                        translation_ids, skip_special_tokens=True
+                    )
+                    print("\n" + test_aim)
                     print(translation_res)
-                    print(f"tokenLne = {len(translation_ids)}")
+                    print(f"tokenLen = {len(translation_ids)}")
                 lora_model.train()
 
             if step % 1000 == 0 and step != 0:
-                print(f"step:{step} lora adapter saved=====================================")
-                lora_model.save_pretrained(f"model_saves/{'0' * (6 - len(str(step)))}{step}_lora_adapter")
-                tokenizer.save_pretrained(f"model_saves/{'0' * (6 - len(str(step)))}{step}_lora_adapter")
+                print(
+                    f"step:{step} lora adapter saved====================================="
+                )
+                lora_model.save_pretrained(
+                    f"model_saves/{'0' * (6 - len(str(step)))}{step}_lora_adapter"
+                )
+                tokenizer.save_pretrained(
+                    f"model_saves/{'0' * (6 - len(str(step)))}{step}_lora_adapter"
+                )
         except torch.OutOfMemoryError as e:
             print("OutOfMemoryError")
             step -= 1
             continue
 
     merged_model = lora_model.merge_and_unload()
-    merged_model.save_pretrained("./Qwen3-0.6B-bnb4-LIL-LoRA-16-20000")
-    tokenizer.save_pretrained("./Qwen3-0.6B-bnb4-LIL-LoRA-16-20000")
+    merged_model.save_pretrained(f"./Qwen3-0.6B-bnb4-LIL-LoRA-{lora_rank}-{step_num}")
+    tokenizer.save_pretrained(f"./Qwen3-0.6B-bnb4-LIL-LoRA-{lora_rank}-{step_num}")
     print("model saved")

@@ -100,9 +100,9 @@ with open("./translation_dataset/lil.txt", mode="w", encoding="utf-8") as F:
             for n in next:
                 next_text += f"{n[0]}{n[1]}"
             target_text = f"{dialogue_list[i][0]}{dialogue_list[i][1]}"
-            # prompt = f"{in_file_name}\\n{pre_text}\\n<|start|>{target_text}<|end|>\\n{next_text}\\n<|translation|>{remove_flag(dialogue_list[i][2])}"
+            # prompt = f"<|im_strat|>user\\n{in_file_name}\\n{pre_text}\\n<|start|>{target_text}<|end|>\\n{next_text}<|im_end|>\\n<|im_start|>assistant\\n<think>\\n\\n</think>\\n\\n<|translation|>{remove_flag(dialogue_list[i][2])}<|im_end|>"
             # prompt = f"文件：{in_file_name}\\n上下文：{pre_text}{target_text}{next_text}\\n目标原文：{target_text}\\n翻译：{remove_flag(dialogue_list[i][2])}"
-            prompt = f"<|im_start|>user\\n文件：{in_file_name}\\n上下文：{pre_text}{target_text}{next_text}\\n目标原文：{target_text}<|im_end|>\\n<|im_start|>assistant\\n<think>\\n\\n</think>\\n\\n翻译：{remove_flag(dialogue_list[i][2])}"
+            prompt = f"<|im_start|>user\\n文件：{in_file_name}\\n上下文：{pre_text}{target_text}{next_text}\\n目标原文：{target_text}<|im_end|>\\n<|im_start|>assistant\\n<think>\\n\\n</think>\\n\\n翻译：{remove_flag(dialogue_list[i][2])}<|im_end|>"
             if is_write:
                 F.write(prompt + "\n")
 
@@ -122,8 +122,8 @@ with open("./translation_dataset/lil.txt", mode="w", encoding="utf-8") as F:
             for n in next:
                 next_text += f"{n[0]}{n[1]}"
             target_text = f"{string_list[i][0]}{string_list[i][1]}"
-            # prompt = f"{in_file_name}\\n{pre_text}\\n<|start|>{target_text}<|end|>\\n{next_text}\\n<|translation|>{string_list[i][2]}"
+            # prompt = f"<|im_strat|>user\\n{in_file_name}\\n{pre_text}\\n<|start|>{target_text}<|end|>\\n{next_text}<|im_end|>\\n<|im_start|>assistant\\n<think>\\n\\n</think>\\n\\n<|translation|>{string_list[i][2]}<|im_end|>"
             # prompt = f"文件：{in_file_name}\\n上下文：{pre_text}{target_text}{next_text}\\n目标原文：{target_text}\\n翻译：{string_list[i][2]}"
-            prompt = f"<|im_start|>user\\n文件：{in_file_name}\\n上下文：{pre_text}{target_text}{next_text}\\n目标原文：{target_text}<|im_end|>\\n<|im_start|>assistant\\n<think>\\n\\n</think>\\n\\n翻译：{string_list[i][2]}"
+            prompt = f"<|im_start|>user\\n文件：{in_file_name}\\n上下文：{pre_text}{target_text}{next_text}\\n目标原文：{target_text}<|im_end|>\\n<|im_start|>assistant\\n<think>\\n\\n</think>\\n\\n翻译：{string_list[i][2]}<|im_end|>"
             if is_write:
                 F.write(prompt + "\n")
