@@ -37,7 +37,6 @@ class Q3_data(Dataset):
             ):
                 prompt = prompt.replace("\\n", "\n")
                 prompt = prompt[:-1]
-                prompt += tokenizer.eos_token
                 prompt_len = tokenizer(prompt, return_tensors="pt").input_ids.shape[0]
                 if prompt_len <= token_limit:
                     self.prompt_list.append(prompt)
@@ -45,7 +44,7 @@ class Q3_data(Dataset):
 
     def get_sample(self, num):
         indices = random.sample(range(self.len), num)
-        in_batch = [self.prompt_list[i] + self.tokenizer.eos_token for i in indices]
+        in_batch = [self.prompt_list[i] for i in indices]
         return in_batch
 
     def __len__(self):
@@ -108,6 +107,9 @@ if __name__ == "__main__":
 
     # scaler = GradScaler()
 
+    with open("./loss_log.txt", "w", encoding="utf-8") as f:
+        f.write("")
+
     loss_list = []
     for step in tqdm(range(step_num)):
         mask = []
@@ -144,22 +146,23 @@ if __name__ == "__main__":
             if step % 50 == 0 and step != 0:
                 lora_model.eval()
                 with torch.no_grad():
-                    test_input = """MayaEvents\n<||>.........<||>......<||>...<||>I tap on Maya’s name in my phone and think about how many other versions of me have been able to narrate that.\n<|start|><||>Sure, it may have taken the end of several worlds (Or several ends of one world) for me to {i}be able{/i} to share something like this with you, but...I’m here.<|end|>\n<||>And hopefully soon, she will be as well.<||>As I stare down at a name that is perhaps the most important to me (Barring the recent intrusion of another girl I’ve known for far too long), I think about what I’m going to say when she picks up.<||>But then she picks up.<||>And I still have absolutely nothing.\n<|translation|>"""
+                    test_input = """<|im_start|>user\n文件：MayaEvents\n上下文：<||>.........<||>......<||>...<||>I tap on Maya’s name in my phone and think about how many other versions of me have been able to narrate that.<||>Sure, it may have taken the end of several worlds (Or several ends of one world) for me to {i}be able{/i} to share something like this with you, but...I’m here.<||>And hopefully soon, she will be as well.<||>As I stare down at a name that is perhaps the most important to me (Barring the recent intrusion of another girl I’ve known for far too long), I think about what I’m going to say when she picks up.<||>But then she picks up.<||>And I still have absolutely nothing.\n目标原文：<||>Sure, it may have taken the end of several worlds (Or several ends of one world) for me to {i}be able{/i} to share something like this with you, but...I’m here.<|im_end|>\n<|im_start|>assistant\n<think>\n\n</think>\n\n翻译："""
                     test_aim = "当然，我可能经历了多个世界的末日(或者一个世界的多个末日){i}才能{/i}和你分享这样的事情，但是...我在这里。"
                     test_ids_atte = tokenizer(test_input, return_tensors="pt").to(device)
-                    output_ids = model.generate(**test_ids_atte)
+                    output_ids = model.generate(**test_ids_atte, max_new_tokens=32768)
                     translation_ids = output_ids[0].tolist()
-                    translation_ids = translation_ids[translation_ids.index(151673) + 1:]
+                    translation_ids = translation_ids[translation_ids.index(151673):]
                     translation_res = tokenizer.decode(translation_ids)
                     print(test_aim)
                     print(translation_res)
+                    print(f"tokenLen = {len(translation_ids)}")
                 lora_model.train()
                 torch.cuda.empty_cache()
 
             if step % 1000 == 0 and step != 0:
                 print(f"step:{step} lora adapter saved=====================================")
-                lora_model.save_pretrained(f"model_saves/{'0' * (6 - len(str(step)))}{step}_lora_adapter")
-                tokenizer.save_pretrained(f"model_saves/{'0' * (6 - len(str(step)))}{step}_lora_adapter")
+                lora_model.save_pretrained(f"model_saves/{'0' * (6 - len(str(step)))}{step}_NEWTOKEN_lora_adapter")
+                tokenizer.save_pretrained(f"model_saves/{'0' * (6 - len(str(step)))}{step}_NEWTOKEN_lora_adapter")
         except torch.OutOfMemoryError as e:
             print("OutOfMemoryError")
             step -= 1

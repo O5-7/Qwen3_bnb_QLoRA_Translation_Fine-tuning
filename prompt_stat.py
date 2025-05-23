@@ -14,29 +14,24 @@ from transformers.models.qwen3.modeling_qwen3 import Qwen3ForCausalLM
 model_name = "../dl_models/Qwen3-0.6B"
 tokenizer: Qwen2TokenizerFast = AutoTokenizer.from_pretrained(model_name)
 
-tokens = tokenizer(["i am test text."], return_tensors="pt")
 
 prompt_list = []
-with open("./translation_dataset/tr.txt", "r", encoding="utf-8") as f:
-    prompt_list += [s[:-1] for s in f.readlines()]
+
 with open("./translation_dataset/lil.txt", "r", encoding="utf-8") as f:
-    prompt_list += [s[:-1] for s in f.readlines()]
-with open("./translation_dataset/mc.txt", "r", encoding="utf-8") as f:
-    prompt_list += [s[:-1] for s in f.readlines()]
+    prompt_list += [s[s.find("翻译：")+3:-1] for s in tqdm(f.readlines())]
 
-# shuffle(prompt_list)
-prompt_list = prompt_list[:50000]
-
-lens_list = []
-for i in range(len(prompt_list)):
-    tokens = tokenizer(prompt_list[i:i+1], return_tensors="pt")
-    tokens_len = tokens.input_ids.shape[1]
-    lens_list.append(tokens_len)
-    if tokens_len >= 512:
-        print(prompt_list[i])
-
-lens_list = np.array(lens_list)
+seq_len_list = []
+for prompt in tqdm(prompt_list):
+    ids = tokenizer(prompt, return_tensors="pt")
+    ids_len = ids.input_ids.shape[1]
+    if ids_len > 300:
+        continue
+    if ids_len > 100:
+        print(prompt)
+    else:
+        seq_len_list.append(ids_len)
 
 plt.figure(0)
-plt.hist(lens_list, bins=200, log=True)
+plt.hist(seq_len_list, bins = 100)
 plt.show()
+

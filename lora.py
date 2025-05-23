@@ -109,7 +109,7 @@ if __name__ == "__main__":
     lora_model.train()
     lora_model.print_trainable_parameters()
 
-    step_num = 10000
+    step_num = 20000
     optimizer = PagedAdamW8bit(lora_model.parameters(), lr=1e-4)
     scheduler = get_scheduler(
         name="cosine",
@@ -167,7 +167,7 @@ if __name__ == "__main__":
             scheduler.step()
             torch.cuda.empty_cache()
             # print(f"step={step:<6} loss={loss.item():.4f}")
-            if step % 50 == 0 and step != 0:
+            if step % 100 == 0 and step != 0:
                 lora_model.eval()
                 with torch.no_grad():
                     test_input = """<|im_start|>user\n文件：MayaEvents\n上下文：<||>.........<||>......<||>...<||>I tap on Maya’s name in my phone and think about how many other versions of me have been able to narrate that.<||>Sure, it may have taken the end of several worlds (Or several ends of one world) for me to {i}be able{/i} to share something like this with you, but...I’m here.<||>And hopefully soon, she will be as well.<||>As I stare down at a name that is perhaps the most important to me (Barring the recent intrusion of another girl I’ve known for far too long), I think about what I’m going to say when she picks up.<||>But then she picks up.<||>And I still have absolutely nothing.\n目标原文：<||>Sure, it may have taken the end of several worlds (Or several ends of one world) for me to {i}be able{/i} to share something like this with you, but...I’m here.<|im_end|>\n<|im_start|>assistant\n<think>\n\n</think>\n\n翻译："""
@@ -198,8 +198,10 @@ if __name__ == "__main__":
                 tokenizer.save_pretrained(
                     f"model_saves/{'0' * (6 - len(str(step)))}{step}_lora_adapter"
                 )
-        except torch.OutOfMemoryError as e:
-            print("OutOfMemoryError")
+        except Exception as e:
+            if 'out of memory' in str(e).lower():
+                print("CUDA 显存不足，跳过该 step")
+            torch.cuda.empty_cache()
             step -= 1
             continue
 
