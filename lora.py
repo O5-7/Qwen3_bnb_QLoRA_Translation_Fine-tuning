@@ -206,6 +206,7 @@ if __name__ == "__main__":
             continue
 
     merged_model = lora_model.merge_and_unload()
-    merged_model.save_pretrained(f"./Qwen3-0.6B-bnb4-LIL-LoRA-{lora_rank}-{step_num}")
-    tokenizer.save_pretrained(f"./Qwen3-0.6B-bnb4-LIL-LoRA-{lora_rank}-{step_num}")
+    model_save_name = model_name[model_name.rfind("/") + 1 :]
+    merged_model.save_pretrained(f"./{model_save_name}-LIL-LoRA-{lora_rank}-{step_num}")
+    tokenizer.save_pretrained(f"./{model_save_name}-LIL-LoRA-{lora_rank}-{step_num}")
     print("model saved")

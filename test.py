@@ -28,7 +28,8 @@ Q_config = BitsAndBytesConfig(
     bnb_4bit_compute_dtype=torch.bfloat16,
 )
 
-model_name = "./Qwen3-0.6B-bnb4-LIL-LoRA-16-20000"
+model_name = "../dl_models/Qwen3-1.7B"
+print(model_name[model_name.rfind("/") + 1 :])
 device = "cuda" if torch.cuda.is_available() else "cpu"
 
 # load the tokenizer and the model
@@ -39,6 +40,7 @@ model: Qwen3ForCausalLM = AutoModelForCausalLM.from_pretrained(
     # quantization_config=Q_config
 ).to(device)
 
+print(model._get_name())
 model.eval()
 text = [
     """<|im_start|>user\n文件：AmiEvents\n上下文：<|Sensei|>Any idea what you’re going to buy with your first paycheck?<|Ami|>Not a clue. I don’t even know what I’m getting paid yet. <|Ami|>Uta hasn’t told me when I’m starting either so I’m kinda just trying on the costume to see how I look and stuff today.<|Ami|>She was definitely right about it making me feel prettier than I actually am.<|Sensei|>I mean, you’re pretty adorable to begin with. But yeah, this costume is good. I support this look.<|Ami|>Of course {i}you{/i} support it, Master. You and your unhealthy maid addiction.<|Sensei|>I can assure you this addiction is completely healthy for both of us. <|Ami|>Healthy for me? I’m gonna need you to explain why, dearest [uncle].<|Sensei|>Why do I need to explain anything? I think our relationship has progressed enough for you to understand what that means.\n目标原文：<|Sensei|>I mean, you’re pretty adorable to begin with. But yeah, this costume is good. I support this look.<|im_end|>\n<|im_start|>assistant\n<think>\n\n</think>\n\n翻译：""",

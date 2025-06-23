@@ -1,9 +1,8 @@
+import os.path
 import warnings
 from math import floor
 
 from sympy.physics.units import temperature
-
-from mc_dataset import translation
 
 warnings.filterwarnings("ignore", category=FutureWarning)
 warnings.filterwarnings("ignore", message="Failed to load image Python extension.*")
@@ -59,7 +58,7 @@ model = torch.compile(model).to(device)
 
 name_dict = {"<>": ""}
 def_file_path = join(
-    "E:\恋爱课程LessonsInLove\LessonsInLove0.42.0-0.42.0-pc", "game/definitions.rpy"
+    "D:\恋爱课程LessonsInLove\LessonsInLove0.42.0-0.42.0-pc", "game/definitions.rpy"
 )
 with open(def_file_path, mode="r", encoding="utf-8") as F:
     def absolute(_):
@@ -90,7 +89,6 @@ with open(def_file_path, mode="r", encoding="utf-8") as F:
             char_obj_str = line[ed_index + 2:]
             char_obj = eval(char_obj_str)
             name_dict.update({key: char_obj.get_name_color()})
-
 
 def translate(folder_path: str, batch_size:int=4):
     file_names = listdir(folder_path)
@@ -188,7 +186,7 @@ def translate(folder_path: str, batch_size:int=4):
                     **model_input_batch,
                     temperature=1.7,
                     num_beams=3,
-                    max_new_tokens=100,
+                    max_new_tokens=100, # ?
                     length_penalty=1.5,
                     early_stopping = True
                 )
@@ -208,9 +206,9 @@ def translate(folder_path: str, batch_size:int=4):
                     if seq[1] == 1:
                         # in_file_name 1 script["old"] prompt
                         in_file_name, _, old, prompt = seq
-                        for i in range(len(out_file_json[in_file_name]["strings"][0])):
-                            if out_file_json[in_file_name]["strings"][0][i]["old"] == old:
-                                out_file_json[in_file_name]["strings"][0][i]["new"] = ress[i]
+                        for j in range(len(out_file_json[in_file_name]["strings"][0])):
+                            if out_file_json[in_file_name]["strings"][0][j]["old"] == old:
+                                out_file_json[in_file_name]["strings"][0][j]["new"] = ress[i]
                                 break
                 pbar.update(len(seq_batch))
 
@@ -232,6 +230,8 @@ def translate(folder_path: str, batch_size:int=4):
                 start_index += batch_running
                 batch_running = min(floor(batch_running * 2), batch_size)
 
+
+    os.makedirs(join(folder_path, "out"), exist_ok=True)
     for file_name,file_json in out_file_json.items():
         with open(join(folder_path, "out", f"{file_name}.json"), "w", encoding="utf-8") as f:
             json.dump(file_json, f, indent=2, ensure_ascii=False)
@@ -239,4 +239,4 @@ def translate(folder_path: str, batch_size:int=4):
 
 
 if __name__ == "__main__":
-    translate("./049_json", batch_size=24)
+    translate("./049_json", batch_size=32)

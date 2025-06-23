@@ -10,9 +10,9 @@ from threading import Thread
 
 import gradio as gr
 import torch
-from transformers import AutoModelForCausalLM, AutoTokenizer, TextIteratorStreamer
+from transformers import AutoModelForCausalLM, AutoTokenizer, BitsAndBytesConfig, TextIteratorStreamer
 
-DEFAULT_CKPT_PATH = "Qwen/Qwen2.5-7B-Instruct"
+DEFAULT_CKPT_PATH = "../dl_models/Qwen3-8B-bnb-4bit"
 
 
 def _get_args():
@@ -62,11 +62,19 @@ def _load_model_tokenizer(args):
     else:
         device_map = "auto"
 
+    Q_config = BitsAndBytesConfig(
+        load_in_4bit=True,
+        bnb_4bit_quant_type="nf4",
+        bnb_4bit_use_double_quant=True,
+        # bnb_4bit_compute_dtype=torch.bfloat16,
+    )
+
     model = AutoModelForCausalLM.from_pretrained(
         args.checkpoint_path,
         torch_dtype="auto",
         device_map=device_map,
         resume_download=True,
+        # quantization_config=Q_config
     ).eval()
     model.generation_config.max_new_tokens = 2048  # For chat.
 
@@ -83,6 +91,7 @@ def _chat_stream(model, tokenizer, query, history):
         conversation,
         add_generation_prompt=True,
         tokenize=False,
+        enable_thinking=False
     )
     inputs = tokenizer([input_text], return_tensors="pt").to(model.device)
     streamer = TextIteratorStreamer(
@@ -91,6 +100,9 @@ def _chat_stream(model, tokenizer, query, history):
     generation_kwargs = {
         **inputs,
         "streamer": streamer,
+        "temperature": 0.7,
+        "top_k": 50,
+        "do_sample": True,
     }
     thread = Thread(target=model.generate, kwargs=generation_kwargs)
     thread.start()
