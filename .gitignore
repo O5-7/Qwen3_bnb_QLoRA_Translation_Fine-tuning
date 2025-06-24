@@ -2,6 +2,6 @@
 lil_json
 translation_dataset
 model_saves
-Qwen3-0.6B-bnb4-LIL-LoRA*
+Qwen3-*
 049_json
 loss_log.txt

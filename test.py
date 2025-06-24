@@ -29,7 +29,7 @@ Q_config = BitsAndBytesConfig(
 )
 
 model_name = "../dl_models/Qwen3-1.7B"
-print(model_name[model_name.rfind("/") + 1 :])
+print(model_name[model_name.rfind("/") + 1:])
 device = "cuda" if torch.cuda.is_available() else "cpu"
 
 # load the tokenizer and the model
@@ -60,13 +60,13 @@ generated_ids = model.generate(
     num_beams=5,
     max_new_tokens=100,
     length_penalty=1.5,
-    early_stopping = False
+    early_stopping=False
 )
 
 print(generated_ids.shape)
 
 ress = tokenizer.batch_decode(
-    generated_ids[:,model_inputs.input_ids.shape[1]:],
+    generated_ids[:, model_inputs.input_ids.shape[1]:],
     skip_special_tokens=True
 )
 for res in ress:
@@ -74,7 +74,7 @@ for res in ress:
 
 exit()
 
-output_ids = generated_ids[0][len(model_inputs.input_ids[0]) :].tolist()
+output_ids = generated_ids[0][len(model_inputs.input_ids[0]):].tolist()
 
 try:
     # rindex finding 151668 (</think>)

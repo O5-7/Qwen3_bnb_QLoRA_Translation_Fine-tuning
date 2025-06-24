@@ -12,7 +12,7 @@ steps = np.arange(len(raw_loss))
 
 
 # 平滑处理函数
-def smooth_curve(loss, window_size=100, sigma=50):
+def smooth_curve(loss, window_size=500, sigma=500):
     """
     带边界处理的平滑函数
     :param loss: 原始loss序列
