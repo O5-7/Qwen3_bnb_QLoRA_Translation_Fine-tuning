@@ -3,5 +3,5 @@ lil_json
 translation_dataset
 model_saves
 Qwen3-*
-049_json
+*_json
 loss_log.txt
