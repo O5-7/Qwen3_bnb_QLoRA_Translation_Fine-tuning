@@ -17,7 +17,7 @@ tokenizer: Qwen2TokenizerFast = AutoTokenizer.from_pretrained(model_name)
 
 prompt_list = []
 
-with open("./translation_dataset/lil.txt", "r", encoding="utf-8") as f:
+with open("lil.txt", "r", encoding="utf-8") as f:
     prompt_list += [s[s.find("翻译：") + 3:-1] for s in tqdm(f.readlines())]
 
 seq_len_list = []

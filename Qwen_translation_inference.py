@@ -1,7 +1,9 @@
 import os.path
+import re
 import warnings
 from math import floor
 
+from peft import PeftModel
 from sympy.physics.units import temperature
 
 warnings.filterwarnings("ignore", category=FutureWarning)
@@ -20,13 +22,58 @@ from transformers.models.qwen3.modeling_qwen3 import Qwen3ForCausalLM
 
 from transformers import BitsAndBytesConfig
 
-# generated_ids = model(
-#     input_ids=model_inputs.input_ids,
-#     attention_mask=model_inputs.attention_mask,
-#     labels=model_inputs.input_ids,
-#     return_dict=True,
-# )
+def verify(seq: str):
+    success = True
+    clean_tag_seq = re.sub(r"{lore=.*?}", "{lore}", seq)
+    clean_tag_seq = re.sub(r"{font=.*?}", "{font}", clean_tag_seq)
+    clean_tag_seq = re.sub(r"{a=.*?}", "{a}", clean_tag_seq)
+    clean_tag_seq = re.sub(r"{color=#?[0-9a-fA-F]{6}}", "{color}", clean_tag_seq)
+    clean_tag_seq = re.sub(r"{size=[*\-+]?\d+(\.\d+)?}", "{size}", clean_tag_seq)
+    flag_list = []
+    is_writing = False
 
+    for c in clean_tag_seq:
+        if c == "{":
+            flag_list.append("")
+            is_writing = True
+            continue
+        if c == "}":
+            is_writing = False
+            continue
+        if is_writing:
+            flag_list[-1] += c
+    if len(flag_list) != 0:
+        flag_stack = []
+        for flag in flag_list:
+            if len(flag) == 0 or flag[0] == "#":
+                continue
+            if flag.startswith("/"):
+                if len(flag_stack) == 0:
+                    success = False
+                    break
+                pop = flag_stack[-1]
+                flag_stack = flag_stack[:-1]
+                if pop != flag[1:]:
+                    success = False
+                    break
+            else:
+                flag_stack.append(flag)
+        if len(flag_stack) != 0:
+            success = False
+    return success
+
+def remove_flag(input_: str):
+    input_ = input_.replace("{i}", "").replace("{/i}", "")
+    input_ = input_.replace("{b}", "").replace("{/b}", "")
+    input_ = input_.replace("{s}", "").replace("{/s}", "")
+    input_ = input_.replace("[", "").replace("]", "")
+
+    input_ = re.sub(r"{size=[-+]?\d+}", "", input_).replace("{/size}", "")
+    input_ = re.sub(r"{lore=.*?}", "", input_).replace("{/lore}", "")
+    input_.replace("{rb}", "").replace("{/rb}", "")
+    input_ = re.sub(r"{rt}.*?{/rt}", "", input_).replace("{/lore}", "")
+
+    return input_
 
 Q_config = BitsAndBytesConfig(
     load_in_4bit=True,
@@ -35,26 +82,21 @@ Q_config = BitsAndBytesConfig(
     bnb_4bit_compute_dtype=torch.bfloat16,
 )
 
-model_name = "./Qwen3-0.6B-bnb4-LIL-LoRA-16-20000"
+model_name = "../dl_models/Qwen3-1.7B"
+lora_model_name = "Qwen3-1.7B-bnb4-LIL-16-30000"
 device = "cuda" if torch.cuda.is_available() else "cpu"
 
 # load the tokenizer and the model
 tokenizer: Qwen2TokenizerFast = AutoTokenizer.from_pretrained(model_name)
 model: Qwen3ForCausalLM = AutoModelForCausalLM.from_pretrained(
     model_name,
-    # quantization_config=Q_config
+    quantization_config=Q_config,
+    # attn_implementation="flash_attention_2"
 )
 
-model.eval()
-model = torch.compile(model).to(device)
-
-"""
-{file_name}
-<|speaker|>AAA<|speaker|>BBB
-<|start|><|speaker|>ORIGIN<|end|>
-<|speaker|>CCC<|speaker|>DDD
-<|>translation<|>XXXX
-"""
+lora_model = PeftModel.from_pretrained(model, lora_model_name)
+lora_model.eval()
+lora_model = torch.compile(lora_model).to(device)
 
 name_dict = {"<>": ""}
 def_file_path = join(
@@ -95,6 +137,8 @@ def translate(folder_path: str, batch_size:int=4):
     translation_seqs = []
 
     for file_name in file_names:
+        if not file_name.endswith(".json"):
+            continue
         json_file = json.load(
             open(join(folder_path, file_name), encoding="utf-8", mode="r")
         )
@@ -129,7 +173,8 @@ def translate(folder_path: str, batch_size:int=4):
                     next_text += f"{n[0]}{n[1]}"
 
                 target_text = f"{dialogue_list[i][0]}{dialogue_list[i][1]}"
-                prompt = f"<|im_start|>user\\n文件：{in_file_name}\\n上下文：{pre_text}{target_text}{next_text}\\n目标原文：{target_text}<|im_end|>\\n<|im_start|>assistant\\n<think>\\n\\n</think>\\n\\n翻译："
+                # prompt = f"<|im_start|>user\n文件：{in_file_name}\n上下文：{pre_text}{target_text}{next_text}\n目标原文：{target_text}<|im_end|>\n<|im_start|>assistant\n<think>\n\n</think>\n\n翻译："
+                prompt = f"文件：{in_file_name}\n上下文：{pre_text}{target_text}{next_text}\n目标原文：{target_text}\n翻译："
                 translation_seqs.append(
                     (in_file_name, 0, *dialogue_list[i][3], prompt)
                 )  # in_file_name 0 event_name _hex prompt
@@ -152,11 +197,14 @@ def translate(folder_path: str, batch_size:int=4):
                     next_text += f"{n[0]}{n[1]}"
 
                 target_text = f"{string_list[i][0]}{string_list[i][1]}"
-                prompt = f"<|im_start|>user\\n文件：{in_file_name}\\n上下文：{pre_text}{target_text}{next_text}\\n目标原文：{target_text}<|im_end|>\\n<|im_start|>assistant\\n<think>\\n\\n</think>\\n\\n翻译："
+                # prompt = f"<|im_start|>user\n文件：{in_file_name}\n上下文：{pre_text}{target_text}{next_text}\n目标原文：{target_text}<|im_end|>\n<|im_start|>assistant\n<think>\n\n</think>\n\n翻译："
+                prompt = f"文件：{in_file_name}\n上下文：{pre_text}{target_text}{next_text}\n目标原文：{target_text}\n翻译："
                 translation_seqs.append((in_file_name, 1, string_list[i][1], prompt))
 
     out_file_json = {}
     for file_name in file_names:
+        if not file_name.endswith(".json"):
+            continue
         json_file = json.load(
             open(join(folder_path, file_name), encoding="utf-8", mode="r")
         )
@@ -182,19 +230,23 @@ def translate(folder_path: str, batch_size:int=4):
                     padding=True,
                     padding_side="left",
                 ).to(device)
-                output_ids = model.generate(
+                output_ids = lora_model.generate(
                     **model_input_batch,
-                    temperature=1.7,
-                    num_beams=3,
-                    max_new_tokens=100, # ?
+                    do_sample = True,
+                    max_new_tokens=100,
+                    temperature=2.5,
+                    num_beams=4,
                     length_penalty=1.5,
+                    repetition_penalty=2.0,
                     early_stopping = True
                 )
                 ress = tokenizer.batch_decode(
                     output_ids[:, model_input_batch.input_ids.shape[1]:],
                     skip_special_tokens=True,
                 )
-
+                for i,res in enumerate(ress):
+                    if not verify(res):
+                        ress[i] = remove_flag(ress[i])
                 out_memory = False
 
                 for i in range(len(seq_batch)):
@@ -228,6 +280,7 @@ def translate(folder_path: str, batch_size:int=4):
                 batch_running = max(floor(batch_running / 2), 1)
             else:
                 start_index += batch_running
+                # start_index += len(seq_batch)
                 batch_running = min(floor(batch_running * 2), batch_size)
 
 
@@ -239,4 +292,4 @@ def translate(folder_path: str, batch_size:int=4):
 
 
 if __name__ == "__main__":
-    translate("./049_json", batch_size=32)
+    translate("./050_json", batch_size=32)

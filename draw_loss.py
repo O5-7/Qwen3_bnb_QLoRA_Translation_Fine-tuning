@@ -12,7 +12,7 @@ steps = np.arange(len(raw_loss))
 
 
 # 平滑处理函数
-def smooth_curve(loss, window_size=500, sigma=500):
+def smooth_curve(loss, window_size=100, sigma=200):
     """
     带边界处理的平滑函数
     :param loss: 原始loss序列
@@ -43,7 +43,7 @@ plt.grid(True, linestyle="--", alpha=0.6)
 plt.title("Training Loss Curve with Confidence Band", fontsize=14, pad=20)
 
 # 绘制原始loss（半透明显示）
-plt.plot(steps, raw_loss, color="royalblue", alpha=0.15, label="Raw Loss")
+plt.scatter(steps, raw_loss, color="royalblue", alpha=0.15, label="Raw Loss")
 
 # 绘制平滑曲线
 line = plt.plot(steps, smoothed_loss, linewidth=2.5, color="darkorange", label="Smoothed Loss")

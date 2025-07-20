@@ -5,3 +5,5 @@ model_saves
 Qwen3-*
 *_json
 loss_log.txt
+lil.txt
+lil_distillation.txt

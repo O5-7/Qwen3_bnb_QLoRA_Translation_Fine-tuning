@@ -22,16 +22,6 @@ from torch.optim import AdamW
 from bitsandbytes.optim import AdamW8bit as ADAM
 from transformers import BitsAndBytesConfig
 
-"""<|im_start|>user
-请介绍一下自己。<|im_end|>
-<|im_start|>assistant
-<think>
-
-</think>
-
-翻译：我是一个智能助手，可以为您提供帮助和支持。如果您有任何问题或需要帮助，请随时告诉我！<|im_end|>"""
-
-
 class Q3_data(Dataset):
     def __init__(
         self,
@@ -41,21 +31,28 @@ class Q3_data(Dataset):
         token_limit=512,
     ):
         super().__init__()
+        self.start = 0
         self.tokenizer = tokenizer
         self.prompt_list = []
-        with open(join("./translation_dataset", file_name), "r", encoding="utf-8") as f:
+        with open(file_name, "r", encoding="utf-8") as f:
             for prompt in tqdm(
                 f.readlines()[:1000] if test_limit else f.readlines(), ncols=120
             ):
                 prompt = prompt.replace("\\n", "\n")
                 prompt = prompt[:-1]
-                prompt_len = tokenizer(prompt, return_tensors="pt").input_ids.shape[0]
+                prompt_len = tokenizer(prompt, return_tensors="pt").input_ids.shape[1]
                 if prompt_len <= token_limit and ("\u200a" not in prompt):
                     self.prompt_list.append(prompt)
         self.len = len(self.prompt_list)
+        random.shuffle(self.prompt_list)
 
-    def get_sample(self, num):
-        indices = random.sample(range(self.len), num)
+    def get_sample(self, num, ramdom=False):
+        if ramdom:
+            indices = random.sample(range(self.len), num)
+        else:
+            start = self.start % self.len
+            indices = range(start, min(start + num, self.len))
+            self.start += num
         in_batch = [self.prompt_list[i] for i in indices]
         mask_len_list = []
         for prompt in in_batch:
@@ -114,17 +111,15 @@ if __name__ == "__main__":
     lora_model.print_trainable_parameters()
 
     step_num = int(3e4)
-    optimizer = ADAM(lora_model.parameters(), lr=1e-5)
+    optimizer = ADAM(lora_model.parameters(), lr=1e-5, betas=(0.9, 0.95))
     scheduler = get_wsd_schedule(
         optimizer=optimizer,
         num_warmup_steps=step_num * 0.05,
         num_stable_steps=step_num * 0.9,
-        num_decay_steps=step_num * 0.05
+        num_decay_steps=step_num * 0.05 + 1
     )
 
     lil_data = Q3_data("lil.txt", tokenizer, token_limit=512, test_limit=False)
-    mc_data = Q3_data("mc.txt", tokenizer, token_limit=256)
-    tr_data = Q3_data("tr.txt", tokenizer, token_limit=256)
 
     # scaler = GradScaler()
 
@@ -134,20 +129,13 @@ if __name__ == "__main__":
         f.write("")
 
     time_last = time.time()
-    for step in tqdm(range(step_num), ncols=120):
+    for step in tqdm(range(step_num + 1), ncols=120):
         delta = time.time() - time_last
         if delta > 2:
             print(batch)
         time_last = time.time()
         torch.cuda.empty_cache()
-        mask = []
-        batch = []
-        data_list = [
-            lil_data.get_sample(8),
-        ]
-        for _m, _b in data_list:
-            mask += _m
-            batch += _b
+        mask,batch = lil_data.get_sample(8)
 
         inputs = tokenizer(batch, return_tensors="pt", padding=True)
         labels = inputs.input_ids.clone()
@@ -181,8 +169,8 @@ if __name__ == "__main__":
             if step % 200 == 0 and step != 0:
                 lora_model.eval()
                 with torch.no_grad():
-                    test_input = """<|im_start|>user\n文件：MayaEvents\n上下文：<||>.........<||>......<||>...<||>I tap on Maya’s name in my phone and think about how many other versions of me have been able to narrate that.<||>Sure, it may have taken the end of several worlds (Or several ends of one world) for me to {i}be able{/i} to share something like this with you, but...I’m here.<||>And hopefully soon, she will be as well.<||>As I stare down at a name that is perhaps the most important to me (Barring the recent intrusion of another girl I’ve known for far too long), I think about what I’m going to say when she picks up.<||>But then she picks up.<||>And I still have absolutely nothing.\n目标原文：<||>Sure, it may have taken the end of several worlds (Or several ends of one world) for me to {i}be able{/i} to share something like this with you, but...I’m here.<|im_end|>\n<|im_start|>assistant\n<think>\n\n</think>\n\n翻译："""
-                    test_aim = "当然，我可能经历了多个世界的末日(或者一个世界的多个末日){i}才能{/i}和你分享这样的事情，但是...我在这里。"
+                    test_input = """文件：MakiEvents\n上下文：<||>.........<||>......<||>...<|Maki|>Hey. Sorry it took me so long. Makoto had a question about blowjobs that I needed to answer.<|Maki|>Hey. Sorry it took me so long. I was continuously running into the wall in hopes that all of its atoms aligned at the perfect time, allowing me to pass through it.<|Sensei|>That’s probably the strangest intro to a date I’ve ever had the pleasure of hearing. <|Maki|>Such is the life of the newly proclaimed “Beautiful Porn Salesman.”<|Sensei|>Oh, right. I forgot that was your nickname now.<|Maki|>Don’t worry. So did I until five seconds ago.\n目标原文：<|Maki|>Hey. Sorry it took me so long. I was continuously running into the wall in hopes that all of its atoms aligned at the perfect time, allowing me to pass through it.\n翻译："""
+                    test_aim = "嘿。对不起，我花了这么长时间。我不断地跑到墙上，希望它的所有原子都在完美的时间对齐，让我穿过它。"
                     test_ids_atte = tokenizer(test_input, return_tensors="pt").to(
                         device
                     )
@@ -232,6 +220,7 @@ if __name__ == "__main__":
 
     merged_model = lora_model.merge_and_unload()
     model_save_name = model_name[model_name.rfind("/") + 1 :]
+    model_save_name += "-full"
     merged_model.save_pretrained(f"./{model_save_name}-LIL-LoRA-{lora_rank}-{step_num}")
     tokenizer.save_pretrained(f"./{model_save_name}-LIL-LoRA-{lora_rank}-{step_num}")
     print("model saved")
